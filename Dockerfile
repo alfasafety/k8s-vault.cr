@@ -17,6 +17,7 @@ RUN \
   echo >&2 "### installing OS packages: ${PACKAGES}" && \
   apk add --no-cache $PACKAGES
 WORKDIR /tmp
+VOLUME /build
 COPY --link VERSION .
 COPY --link shard.yml .
 COPY --link k8s-vault_example.yaml .
@@ -34,6 +35,7 @@ RUN \
     echo >&2 "## Version check: $(/tmp/k8s-vault -v)" && \
     echo >&2 "## Help Check" && \
     /tmp/k8s-vault --help
+CMD [ "cp", "/tmp/k8s-vault", "/build" ]
 
 
 ## this stage creates final docker image

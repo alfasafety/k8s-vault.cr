@@ -181,9 +181,9 @@ module K8sVault
   # Removed temporary KUBECONFIG, if present
   #
   # Return `nil`
-  def self.cleanup : Nil
+  def self.cleanup(kubecontext : String) : Nil
     K8sVault::Log.debug "cleaning up"
-    File.delete(K8sVault::KUBECONFIG_TEMP) rescue nil
+    File.delete("#{K8sVault::KUBECONFIG_TEMP}-#{kubecontext}.yaml") rescue nil
   end
 
   # Runs everything
@@ -263,7 +263,7 @@ module K8sVault
 
     # trap CTRL-C
     Signal::INT.trap do
-      cleanup
+      cleanup(kubecontext)
       exit 0
     end
 
@@ -271,23 +271,27 @@ module K8sVault
     begin
       config = K8sVault.config(kubecontext: kubecontext)
       # write temp KUBECONFIG
-      File.write(K8sVault::KUBECONFIG_TEMP, config.kubeconfig, perm = 0o0600)
+      if File.exists?("#{K8sVault::KUBECONFIG_TEMP}-#{kubecontext}.yaml")
+        K8sVault::Log.error "\"#{K8sVault::KUBECONFIG_TEMP}-#{kubecontext}.yaml\" file already exists, delete it and check that there are no k8s-vault processes running."
+        exit 1
+      end
+      File.write("#{K8sVault::KUBECONFIG_TEMP}-#{kubecontext}.yaml", config.kubeconfig, perm = 0o0600)
     rescue K8sVault::UnconfiguredContextError
       K8sVault::Log.error "\"#{kubecontext}\" context is not found in #{K8sVault::K8SVAULT_CONFIG}"
-      cleanup
+      cleanup(kubecontext)
       exit 1
     rescue K8sVault::ConfigParseError
       K8sVault::Log.error "unable to parse config file at #{K8sVault::K8SVAULT_CONFIG}"
-      cleanup
+      cleanup(kubecontext)
       exit 1
     rescue KCE::Exceptions::ContextMissingError
       K8sVault::Log.error "\"#{kubecontext}\" context is not found in KUBECONFIG (#{K8sVault::KUBECONFIG})"
-      cleanup
+      cleanup(kubecontext)
       exit 1
     rescue ex
       K8sVault::Log.debug "#{ex.message} (#{ex.class})"
       K8sVault::Log.error "unexpected error"
-      cleanup
+      cleanup(kubecontext)
       exit 1
     end
 
@@ -308,20 +312,20 @@ module K8sVault
       unless K8sVault.wait_for_connection(port: config.local_port.to_i, timeout: config.k8s_api_timeout.to_i)
         forwarder.signal(Signal::TERM) rescue nil
         forwarder.wait rescue nil
-        K8sVault.cleanup
+        K8sVault.cleanup(kubecontext)
         exit 1
       end
     rescue ex
       K8sVault::Log.debug "#{ex.message} (#{ex.class})"
       K8sVault::Log.error "failed to establish SSH session"
-      K8sVault.cleanup
+      K8sVault.cleanup(kubecontext)
       exit 1
     end
 
     ENV["K8SVAULT"] = "1"
-    ENV["KUBECONFIG"] = K8sVault::KUBECONFIG_TEMP
+    ENV["KUBECONFIG"] = "#{K8sVault::KUBECONFIG_TEMP}-#{kubecontext}.yaml"
     ENV["K8SVAULT_CONTEXT"] = kubecontext
-    K8sVault::Log.debug "using KUBECONFIG: #{K8sVault::KUBECONFIG_TEMP}"
+    K8sVault::Log.debug "using KUBECONFIG: #{K8sVault::KUBECONFIG_TEMP}-#{kubecontext}.yaml"
 
     if spawn_shell
       K8sVault::Log.info "k8s-vault session started"
@@ -332,11 +336,11 @@ module K8sVault
       sleep 3
       cmd = options.first
       options.shift
-      Process.run(cmd, options, {"KUBECONFIG" => K8sVault::KUBECONFIG_TEMP}, output: STDOUT, error: STDERR)
+      Process.run(cmd, options, {"KUBECONFIG" => "#{K8sVault::KUBECONFIG_TEMP}-#{kubecontext}.yaml"}, output: STDOUT, error: STDERR)
     end
 
     forwarder.signal(Signal::TERM) rescue nil
     forwarder.wait rescue nil
-    K8sVault.cleanup
+    K8sVault.cleanup(kubecontext)
   end
 end
