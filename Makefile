@@ -24,7 +24,7 @@ OUTPUT:= ./$(RELEASE_DIR)/$(BINARY)-$(VERSION)-$(OS)-$(ARCH)
 
 .PHONY: all clean version prepare help
 
-all: clean prepare releases ## Builds everything
+all: clean prepare releases pack ## Builds everything
 
 help: ## Show this help
 	@echo
@@ -33,9 +33,9 @@ help: ## Show this help
 		sort |\
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-releases: prepare version $(TARGET) pack docker docker_arm64 ## Builds releases
+releases: prepare version docker ## Builds releases
 	docker run -it --rm --platform linux/amd64 -v ${PWD}/$(RELEASE_DIR):/app --entrypoint "sh" $(BINARY):$(VERSION)-amd64 -c "cp /bin/$(BINARY) /app/$(BINARY)-$(VERSION)-linux-amd64"
-	docker run -it --rm --platform linux/arm64 -v ${PWD}/$(RELEASE_DIR):/app --entrypoint "sh" $(BINARY):$(VERSION)-arm64 -c "cp /bin/$(BINARY) /app/$(BINARY)-$(VERSION)-linux-arm64"
+#	docker run -it --rm --platform linux/arm64 -v ${PWD}/$(RELEASE_DIR):/app --entrypoint "sh" $(BINARY):$(VERSION)-arm64 -c "cp /bin/$(BINARY) /app/$(BINARY)-$(VERSION)-linux-arm64"
 
 docker: ## Builds docker image amd64
 	docker build --platform linux/amd64 -t $(BINARY):$(VERSION)-amd64 .
@@ -53,14 +53,14 @@ clean: ## Removes release directory
 	@echo >&2 "cleaned up"
 
 version: ## Updates the version
-	@sed -i "" 's/^version:.*/version: "$(VERSION)"/g' k8s-vault_example.yaml
-	@sed -i "" 's/^version:.*/version: $(VERSION)/g' shard.yml
+	@sed -i 's/^version:.*/version: "$(VERSION)"/g' k8s-vault_example.yaml
+	@sed -i 's/^version:.*/version: $(VERSION)/g' shard.yml
 	@echo "shard.yml updated with version $(VERSION)"
 
-$(TARGET): % : prepare $(filter-out $(TEMPS), $(OBJ)) %.cr
-	@crystal build src/cli.cr -o $(OUTPUT) --progress --release
-	@rm ./$(RELEASE_DIR)/*.dwarf
-	@echo "compiled binaries placed to \"./$(RELEASE_DIR)\" directory"
+# $(TARGET): % : prepare $(filter-out $(TEMPS), $(OBJ)) %.cr
+# 	@crystal build src/cli.cr -o $(OUTPUT) --progress --release
+# 	@rm ./$(RELEASE_DIR)/*.dwarf
+# 	@echo "compiled binaries placed to \"./$(RELEASE_DIR)\" directory"
 
 pack: ## Runs UPX on locally built binary
-	@find ./$(RELEASE_DIR) -type f -name "$(BINARY)-$(VERSION)-$(OS)-$(ARCH)" | xargs upx
+	@find ./$(RELEASE_DIR) -type f -name "$(BINARY)-$(VERSION)-$(OS)-$(ARCH)" | xargs upx 2>&1; exit 0
